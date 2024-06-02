@@ -13,6 +13,7 @@ const acceptButton = document.getElementById('accept');
 const declineButton = document.getElementById('decline');
 const userIdInput = document.getElementById('userId');
 const calleeIdInput = document.getElementById('calleeId');
+const fillIn = document.getElementById('fillIn');
 
 let localStream;
 
@@ -22,14 +23,14 @@ const log = (message) => {
   logDiv.appendChild(p);
 };
 
-// fillIn.addEventListener('click', () => {
-//   userIdInput.value = 'two';
-//   calleeIdInput.value = 'one';
+fillIn.addEventListener('click', () => {
+  userIdInput.value = 'two';
+  calleeIdInput.value = 'one';
 
-//   socket.emit('register', userIdInput.value);
-//   log('Registered successfully.');
-//   startLocalStream();
-// });
+  socket.emit('register', userIdInput.value);
+  log('Registered successfully.');
+  startLocalStream();
+});
 
 const peerConnection = new RTCPeerConnection({
   iceServers: [
