@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Screen Sharing App with External Users</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+      }
+      #log {
+        border: 1px solid #ccc;
+        padding: 10px;
+        width: 80%;
+        height: 200px;
+        overflow-y: scroll;
+        margin: 10px 0;
+      }
+      #incoming-call {
+        display: none;
+        border: 1px solid #000;
+        padding: 10px;
+        background-color: #f0f0f0;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Screen Sharing App</h1>
+    <input type="text" id="userId" placeholder="Your ID" />
+    <input type="text" id="calleeId" placeholder="Callee ID" />
+    <button id="register">Register</button>
+    <button id="call">Call</button>
+    <button id="hangup">Hang Up</button>
+    <video id="localVideo" autoplay muted></video>
+    <video id="remoteVideo" autoplay></video>
+    <div id="log"></div>
+
+    <div id="incoming-call">
+      <p>Incoming call from <span id="caller-id"></span></p>
+      <button id="accept">Accept</button>
+      <button id="decline">Decline</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="configs.js"></script>
+    <script>
+      document.getElementById('register').addEventListener('click', () => {
+        socket.emit('register', userIdInput.value);
+        log('Registered successfully.');
+      });
+
+      startButton.onclick = async () => {
+        try {
+          localStream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+          });
+          localVideo.srcObject = localStream;
+          startWebRTC();
+        } catch (e) {
+          log('Error accessing display media.');
+          console.error('Error accessing display media.', e);
+        }
+      };
+
+      stopButton.onclick = () => {
+        if (localStream) {
+          localStream.getTracks().forEach((track) => track.stop());
+          localVideo.srcObject = null;
+          if (peerConnection) {
+            peerConnection.close();
+          }
+          log('Call ended.');
+        }
+      };
+
+      function startWebRTC() {
+        localStream
+          .getTracks()
+          .forEach((track) => peerConnection.addTrack(track, localStream));
+
+        peerConnection.onicecandidate = (event) => {
+          if (event.candidate) {
+            socket.emit('ice-candidate', {
+              type: 'candidate',
+              candidate: event.candidate,
+              from: userIdInput.value,
+              to: calleeIdInput.value,
+            });
+          }
+        };
+
+        peerConnection.ontrack = (event) => {
+          remoteVideo.srcObject = event.streams[0];
+          log('Connected.');
+        };
+
+        peerConnection.onnegotiationneeded = async () => {
+          const offer = await peerConnection.createOffer();
+          await peerConnection.setLocalDescription(offer);
+          socket.emit('offer', {
+            type: 'offer',
+            sdp: peerConnection.localDescription.sdp,
+            from: userIdInput.value,
+            to: calleeIdInput.value,
+          });
+          log('Calling...');
+        };
+      }
+
+      socket.on('offer', async (data) => {
+        if (data.to === userIdInput.value) {
+          await peerConnection.setRemoteDescription(
+            new RTCSessionDescription({ type: 'offer', sdp: data.sdp })
+          );
+          incomingCallDiv.style.display = 'block';
+          callerIdSpan.textContent = data.from;
+          log('Ringing...');
+
+          acceptButton.onclick = async () => {
+            incomingCallDiv.style.display = 'none';
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            socket.emit('answer', {
+              type: 'answer',
+              sdp: peerConnection.localDescription.sdp,
+              to: data.from,
+              from: userIdInput.value,
+            });
+            log('Call connected.');
+          };
+
+          declineButton.onclick = () => {
+            socket.emit('message', {
+              type: 'decline',
+              message: 'Line busy! Call declined.',
+              to: data.from,
+              from: userIdInput.value,
+            });
+            incomingCallDiv.style.display = 'none';
+            log('Call declined.');
+          };
+        }
+      });
+
+      socket.on('answer', async (data) => {
+        if (data.to === userIdInput.value) {
+          await peerConnection.setRemoteDescription(
+            new RTCSessionDescription({ type: 'answer', sdp: data.sdp })
+          );
+          log('Call connected.');
+        }
+      });
+
+      socket.on('ice-candidate', async (data) => {
+        if (data.to === userIdInput.value) {
+          await peerConnection.addIceCandidate(
+            new RTCIceCandidate(data.candidate)
+          );
+        }
+      });
+
+      socket.on('message', (data) => {
+        if (data.type === 'decline' && data.to === userIdInput.value) {
+          peerConnection.close();
+          log(data.message);
+        }
+      });
+    </script>
+  </body>
+</html>
