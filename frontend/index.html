@@ -39,12 +39,6 @@
     <video id="remoteVideo" autoplay></video>
     <div id="log"></div>
 
-    <div id="incoming-call">
-      <p>Incoming call from <span id="caller-id"></span></p>
-      <button id="accept">Accept</button>
-      <button id="decline">Decline</button>
-    </div>
-
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script src="configs.js"></script>
     <script>
@@ -117,8 +111,8 @@
 
       socket.on('offer', async (data) => {
         if (data.to === userIdInput.value) {
-          await peerConnection.setRemoteDescription(
-            new RTCSessionDescription({ type: 'offer', sdp: data.sdp })
+            await peerConnection.setRemoteDescription(
+            new RTCSessionDescription(data)
           );
           incomingCallDiv.style.display = 'block';
           callerIdSpan.textContent = data.from;
@@ -128,7 +122,7 @@
             incomingCallDiv.style.display = 'none';
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
-            socket.emit('answer', {
+            socket.emit('signal', {
               type: 'answer',
               sdp: peerConnection.localDescription.sdp,
               to: data.from,
@@ -140,7 +134,7 @@
           declineButton.onclick = () => {
             socket.emit('message', {
               type: 'decline',
-              message: 'Line busy! Call declined.',
+              message: 'Line busy! Called declined.',
               to: data.from,
               from: userIdInput.value,
             });
