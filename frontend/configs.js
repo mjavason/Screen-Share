@@ -1,6 +1,6 @@
 // const socket = io('http://localhost:3000');
 // const socket = io('https://call-ring-prototype-backend.onrender.com');
-const socket = io('http://localhost:5000');
+const socket = io('https://screen-share-ctp6.onrender.com');
 
 const startButton = document.getElementById('call');
 const stopButton = document.getElementById('hangup');
