@@ -1,16 +1,11 @@
-// const socket = io('http://localhost:3000');
+const socket = io('http://localhost:5000');
 // const socket = io('https://call-ring-prototype-backend.onrender.com');
-const socket = io('https://screen-share-ctp6.onrender.com');
+// const socket = io('https://screen-share-ctp6.onrender.com');
 
-const startButton = document.getElementById('call');
+const startButton = document.getElementById('share');
 const stopButton = document.getElementById('hangup');
-const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
 const logDiv = document.getElementById('log');
-const incomingCallDiv = document.getElementById('incoming-call');
-const callerIdSpan = document.getElementById('caller-id');
-const acceptButton = document.getElementById('accept');
-const declineButton = document.getElementById('decline');
 const userIdInput = document.getElementById('userId');
 const calleeIdInput = document.getElementById('calleeId');
 const fillIn = document.getElementById('fillIn');
@@ -29,7 +24,6 @@ fillIn.addEventListener('click', () => {
 
   socket.emit('register', userIdInput.value);
   log('Registered successfully.');
-  startLocalStream();
 });
 
 const peerConnection = new RTCPeerConnection({

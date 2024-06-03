@@ -1,13 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Screen Sharing App with External Users</title>
+    <title>WebRTC Screen Share</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <style>
-      body {
-        font-family: Arial, sans-serif;
-      }
       #log {
         border: 1px solid #ccc;
         padding: 10px;
@@ -29,144 +25,136 @@
     </style>
   </head>
   <body>
-    <h1 id="fillIn">Screen Sharing App</h1>
+    <h1 id="fillIn">WebRTC Screen Share</h1>
+
     <input type="text" id="userId" placeholder="Your ID" />
     <input type="text" id="calleeId" placeholder="Callee ID" />
     <button id="register">Register</button>
-    <button id="call">Request Screen</button>
-    <button id="hangup">Hang Up</button>
-    <video id="localVideo" autoplay muted></video>
+    <button id="share">Share screen</button>
+    <button id="hangup">Stop sharing</button>
     <video id="remoteVideo" autoplay></video>
     <div id="log"></div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script src="configs.js"></script>
     <script>
+      const startLocalStream = async () => {
+        try {
+          localStream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+          });
+
+          //Play your own screen
+          remoteVideo.srcObject = localStream;
+
+          localStream
+            .getTracks()
+            .forEach((track) => peerConnection.addTrack(track, localStream));
+        } catch (error) {
+          log('Error accessing screen media');
+        }
+      };
+
       document.getElementById('register').addEventListener('click', () => {
         socket.emit('register', userIdInput.value);
         log('Registered successfully.');
       });
 
-      startButton.onclick = async () => {
-        try {
-          localStream = await navigator.mediaDevices.getDisplayMedia({
-            video: true,
-            audio: true,
+      document.getElementById('share').addEventListener('click', async () => {
+        await startLocalStream();
+        const offer = await peerConnection.createOffer({
+          offerToReceiveVideo: 1,
+        });
+        await peerConnection.setLocalDescription(offer);
+        socket.emit('signal', {
+          type: 'offer',
+          sdp: peerConnection.localDescription.sdp,
+          from: userIdInput.value,
+          to: calleeIdInput.value,
+        });
+        log('Sharing...');
+      });
+
+      document.getElementById('hangup').addEventListener('click', () => {
+        peerConnection.close();
+        // localStream.getTracks().forEach((track) => track.stop());
+        log('Share session ended.');
+      });
+
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit('signal', {
+            type: 'candidate',
+            candidate: event.candidate,
+            from: userIdInput.value,
+            to: calleeIdInput.value,
           });
-          localVideo.srcObject = localStream;
-          startWebRTC();
-        } catch (e) {
-          log('Error accessing display media.');
-          console.error('Error accessing display media.', e);
         }
       };
 
-      stopButton.onclick = () => {
-        if (localStream) {
-          localStream.getTracks().forEach((track) => track.stop());
-          localVideo.srcObject = null;
-          if (peerConnection) {
-            peerConnection.close();
-          }
+      peerConnection.ontrack = (event) => {
+        remoteVideo.srcObject = event.streams[0];
+        log('Connected.');
+      };
+
+      peerConnection.onconnectionstatechange = () => {
+        if (
+          peerConnection.connectionState === 'disconnected' ||
+          peerConnection.connectionState === 'closed'
+        ) {
+          peerConnection.close();
+          // localStream.getTracks().forEach((track) => track.stop());
           log('Call ended.');
         }
       };
 
-      function startWebRTC() {
-        localStream
-          .getTracks()
-          .forEach((track) => peerConnection.addTrack(track, localStream));
-
-        peerConnection.onicecandidate = (event) => {
-          if (event.candidate) {
-            socket.emit('ice-candidate', {
-              type: 'candidate',
-              candidate: event.candidate,
-              from: userIdInput.value,
-              to: calleeIdInput.value,
-            });
-          }
-        };
-
-        peerConnection.ontrack = (event) => {
-          remoteVideo.srcObject = event.streams[0];
-          log('Connected.');
-        };
-
-        peerConnection.onnegotiationneeded = async () => {
-          const offer = await peerConnection.createOffer({
-            offerToReceiveAudio: 1,
-            offerToRecieveVideo: 1,
-          });
-          await peerConnection.setLocalDescription(offer);
-          socket.emit('offer', {
-            type: 'offer',
-            sdp: peerConnection.localDescription.sdp,
-            from: userIdInput.value,
-            to: calleeIdInput.value,
-          });
-          log('Calling...');
-        };
-      }
-
-      socket.on('offer', async (data) => {
-        if (data.to === userIdInput.value) {
-            await peerConnection.setRemoteDescription(
+      socket.on('signal', async (data) => {
+        if (data.type === 'offer') {
+          await peerConnection.setRemoteDescription(
             new RTCSessionDescription(data)
           );
-          incomingCallDiv.style.display = 'block';
-          callerIdSpan.textContent = data.from;
-          log('Ringing...');
+          // incomingCallDiv.style.display = 'block';
+          // callerIdSpan.textContent = data.from;
 
-          acceptButton.onclick = async () => {
-            incomingCallDiv.style.display = 'none';
-            const answer = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answer);
-            socket.emit('signal', {
-              type: 'answer',
-              sdp: peerConnection.localDescription.sdp,
-              to: data.from,
-              from: userIdInput.value,
-            });
-            log('Call connected.');
-          };
+          // acceptButton.onclick = async () => {
+          //   incomingCallDiv.style.display = 'none';
+          const answer = await peerConnection.createAnswer();
+          await peerConnection.setLocalDescription(answer);
+          socket.emit('signal', {
+            type: 'answer',
+            sdp: peerConnection.localDescription.sdp,
+            to: data.from,
+            from: userIdInput.value,
+          });
+          log(`Receiving screen share from ${data.from}`);
+          // };
 
-          declineButton.onclick = () => {
-            socket.emit('message', {
-              type: 'decline',
-              message: 'Line busy! Called declined.',
-              to: data.from,
-              from: userIdInput.value,
-            });
-            incomingCallDiv.style.display = 'none';
-            log('Call declined.');
-          };
-        }
-      });
-
-      socket.on('answer', async (data) => {
-        if (data.to === userIdInput.value) {
+          // declineButton.onclick = () => {
+          //   socket.emit('message', {
+          //     type: 'decline',
+          //     message: 'Line busy! Called declined.',
+          //     to: data.from,
+          //     from: userIdInput.value,
+          //   });
+          //   incomingCallDiv.style.display = 'none';
+          //   log('Call declined.');
+          // };
+        } else if (data.type === 'answer') {
           await peerConnection.setRemoteDescription(
-            new RTCSessionDescription({ type: 'answer', sdp: data.sdp })
+            new RTCSessionDescription(data)
           );
-          log('Call connected.');
-        }
-      });
-
-      socket.on('ice-candidate', async (data) => {
-        if (data.to === userIdInput.value) {
+        } else if (data.type === 'candidate') {
           await peerConnection.addIceCandidate(
             new RTCIceCandidate(data.candidate)
           );
         }
       });
 
-      socket.on('message', (data) => {
-        if (data.type === 'decline' && data.to === userIdInput.value) {
-          peerConnection.close();
-          log(data.message);
-        }
-      });
+      // socket.on('message', (data) => {
+      //   if (data.type === 'decline') {
+      //     peerConnection.close();
+      //     log(data.message);
+      //   }
+      // });
     </script>
   </body>
 </html>
